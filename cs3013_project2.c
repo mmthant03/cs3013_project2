@@ -13,6 +13,7 @@ unsigned long **sys_call_table;
 //declare pointers to the old functions, that we will store the pointers in within init_interceptor
 asmlinkage long (*ref_sys_cs3013_syscall1)(void);
 asmlinkage long (*ref_sys_open)(const char __user *filename, int flags, umode_t mode);
+asmlinkage long (*ref_sys_close)(unsigned int fd);
 
 // this area is our intercepted functions
 //this is for sys_cs3013_syscall1
