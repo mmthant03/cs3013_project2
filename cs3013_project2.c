@@ -1,3 +1,8 @@
+#undef __KERNEL__
+#undef MODULE
+#define __KERNEL__
+#define MODULE
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/syscalls.h>
@@ -5,10 +10,21 @@
 unsigned long **sys_call_table;
 
 asmlinkage long (*ref_sys_cs3013_syscall1)(void);
+asmlinkage long (*ref_sys_open)(const char __user *filename, int flags, umode_t mode);
 
 asmlinkage long new_sys_cs3013_syscall1(void) {
-  printk(KERN_INFO "\"'Hello world?!' More like 'Goodbye, world!' EXTERMINATE!\" -- Dalek");
+  printk(KERN_INFO "\"'Hello world?!' More like 'Goodbye, world!' EXTERMINATE!\" -- Dalek\n");
   return 0;
+}
+// intercept the opening file;
+asmlinkage long new_sys_open(const char __user *filename, int flags, umode_t mode) {
+  int thisUid = current_uid().val;
+  if (thisUid > 1000 || thisUid == 1000) {
+    printk(KERN_INFO "%d user is trying to open filename %s\n", thisUid, filename);
+  }
+  return ref_sys_open(filename,flags,mode);
+  //print that user is trying to open a file
+  //run the original sys_open function
 }
 
 static unsigned long **find_sys_call_table(void) {
@@ -19,7 +35,7 @@ static unsigned long **find_sys_call_table(void) {
     sct = (unsigned long **)offset;
 
     if (sct[__NR_close] == (unsigned long *) sys_close) {
-      printk(KERN_INFO "Interceptor: Found syscall table at address: 0x%02lX",
+      printk(KERN_INFO "Interceptor: Found syscall table at address: 0x%02lX\n",
 	     (unsigned long) sct);
       return sct;
     }
@@ -66,16 +82,17 @@ static int __init interceptor_start(void) {
   
   /* Store a copy of all the existing functions */
   ref_sys_cs3013_syscall1 = (void *)sys_call_table[__NR_cs3013_syscall1];
-
+  ref_sys_open = (void *)sys_call_table[__NR_open];
   /* Replace the existing system calls */
   disable_page_protection();
 
   sys_call_table[__NR_cs3013_syscall1] = (unsigned long *)new_sys_cs3013_syscall1;
-  
+  sys_call_table[__NR_open] = (unsigned long *)new_sys_open;
+
   enable_page_protection();
   
   /* And indicate the load was successful */
-  printk(KERN_INFO "Loaded interceptor!");
+  printk(KERN_INFO "Loaded interceptor!\n");
 
   return 0;
 }
@@ -88,9 +105,10 @@ static void __exit interceptor_end(void) {
   /* Revert all system calls to what they were before we began. */
   disable_page_protection();
   sys_call_table[__NR_cs3013_syscall1] = (unsigned long *)ref_sys_cs3013_syscall1;
+  sys_call_table[__NR_open] = (unsigned long *)ref_sys_open;
   enable_page_protection();
 
-  printk(KERN_INFO "Unloaded interceptor!");
+  printk(KERN_INFO "Unloaded interceptor!\n");
 }
 
 MODULE_LICENSE("GPL");
