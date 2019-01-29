@@ -1,14 +1,37 @@
+// We need to define __KERNEL__ and MODULE to be in Kernel space
+// If they are defined, undefined them and define them again:
+#undef __KERNEL__
+#undef MODULE
+#define __KERNEL__
+#define MODULE
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/syscalls.h>
 
 unsigned long **sys_call_table;
 
+//declare pointers to the old functions, that we will store the pointers in within init_interceptor
 asmlinkage long (*ref_sys_cs3013_syscall1)(void);
+asmlinkage long (*ref_sys_open)(const char __user *filename,
+				int flags, umode_t mode);
 
+// this area is our intercepted functions
+//this is for sys_cs3013_syscall1
 asmlinkage long new_sys_cs3013_syscall1(void) {
-  printk(KERN_INFO "\"'Hello world?!' More like 'Goodbye, world!' EXTERMINATE!\" -- Dalek");
-  return 0;
+	printk(KERN_INFO "\"'Hello world?!' More like 'Goodbye, world!' EXTERMINATE!\" -- Dalek");
+	return 0;
+}
+//this is for sys_open
+asmlinkage long new_sys_open(const char __user *filename,
+				int flags, umode_t mode) {
+	//store uid
+	int thisUID = current_uid().val;
+	if (thisUID >= 1000) {
+		//print our stuff
+		printk(KERN_INFO "User %d is opening file: %s\n", thisUID, filename);
+		//run open
+	}
+	return ref_sys_open(filename, flags, mode);
 }
 
 static unsigned long **find_sys_call_table(void) {
@@ -57,40 +80,42 @@ static void enable_page_protection(void) {
 }
 
 static int __init interceptor_start(void) {
-  /* Find the system call table */
-  if(!(sys_call_table = find_sys_call_table())) {
-    /* Well, that didn't work. 
-       Cancel the module loading step. */
-    return -1;
-  }
-  
-  /* Store a copy of all the existing functions */
-  ref_sys_cs3013_syscall1 = (void *)sys_call_table[__NR_cs3013_syscall1];
+	
+		// Find the system call table 
+		if(!(sys_call_table = find_sys_call_table())) {
+			//Well, that didn't work. 
+			//Cancel the module loading step. 
+			return -1;
+		}
+	  
+		// Store a copy of all the existing functions 
+		ref_sys_cs3013_syscall1 = (void *)sys_call_table[__NR_cs3013_syscall1];
+		ref_sys_open                     = (void *)sys_call_table[__NR_open];
 
-  /* Replace the existing system calls */
-  disable_page_protection();
-
-  sys_call_table[__NR_cs3013_syscall1] = (unsigned long *)new_sys_cs3013_syscall1;
-  
-  enable_page_protection();
-  
+		//Replace the existing system calls 
+		disable_page_protection();
+		sys_call_table[__NR_cs3013_syscall1] = (unsigned long *)new_sys_cs3013_syscall1;
+		sys_call_table[__NR_open]                     = (unsigned long *)new_sys_open;
+		enable_page_protection();
+	  
   /* And indicate the load was successful */
-  printk(KERN_INFO "Loaded interceptor!");
+  printk(KERN_INFO "Loaded interceptor!\n");
 
   return 0;
 }
 
 static void __exit interceptor_end(void) {
-  /* If we don't know what the syscall table is, don't bother. */
-  if(!sys_call_table)
-    return;
+	// If we don't know what the syscall table is, don't bother.
+	if(!sys_call_table)
+		return;
   
-  /* Revert all system calls to what they were before we began. */
-  disable_page_protection();
-  sys_call_table[__NR_cs3013_syscall1] = (unsigned long *)ref_sys_cs3013_syscall1;
-  enable_page_protection();
+	/* Revert all system calls to what they were before we began. */
+	disable_page_protection();
+	sys_call_table[__NR_cs3013_syscall1] = (unsigned long *)ref_sys_cs3013_syscall1;
+	sys_call_table[__NR_open]                     = (unsigned long *)ref_sys_open;
+	enable_page_protection();
 
-  printk(KERN_INFO "Unloaded interceptor!");
+	printk(KERN_INFO "Unloaded interceptor!\n");
 }
 
 MODULE_LICENSE("GPL");
