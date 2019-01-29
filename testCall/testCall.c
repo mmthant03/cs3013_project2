@@ -11,7 +11,13 @@ long testCall1 ( void) {
 int main () {
 printf("The return values of the system calls are:\n");
 printf("\tcs3013_syscall1: %ld\n", testCall1());
-
+int c;
 FILE* testFile = fopen("testFile.txt", "r");
+
+if (testFile) {
+    while ((c = getc(testFile)) != EOF)
+        putchar(c);
+    fclose(testFile);
+}
 return 0;
 }
